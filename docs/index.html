@@ -5,10 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cachemaxxing: stop paying full price for the same tokens</title>
 <meta name="description" content="A zero-dependency Python library that measures your LLM prompt-cache hit rate, finds the byte where your prompts stop repeating, and lays them out so Anthropic, OpenAI and Gemini bill the repeat at the cached rate.">
-<meta property="og:title" content="cachemaxxing">
-<meta property="og:description" content="Stop paying full price for the same tokens. Prompt-cache hit rate, drift diagnosis and cache-friendly layouts for Anthropic, OpenAI and Gemini.">
+<meta property="og:title" content="cachemaxxing: stop paying full price for the same tokens">
+<meta property="og:description" content="An open-source Python library that finds why your LLM prompt cache misses, tells you how to fix it, and lays out your prompts so the repeat is billed at the cached rate. Anthropic, OpenAI, Azure OpenAI and Gemini.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://ashhadahsan.github.io/cachemaxxing/">
+<meta property="og:image" content="https://ashhadahsan.github.io/cachemaxxing/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="cachemaxxing: stop paying full price for the same tokens. From 0% to 98% read from cache.">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -231,9 +236,9 @@ Thanks! Is that safe?                 6,433 input tokens,  6,344 from cache <spa
 
   <div class="wrap">
     <div class="stats" aria-label="Results">
-      <div class="stat"><b>76–88%</b><p>lower input cost than a typical app, for chat and RAG on every model we benchmarked</p></div>
+      <div class="stat"><b>76–88%</b><p>lower input cost than an app with common prompt bugs, for chat and RAG on every model we benchmarked</p></div>
       <div class="stat"><b>98–99%</b><p>of the input read from cache from the second turn of a chat, on OpenAI and Anthropic</p></div>
-      <div class="stat"><b>0</b><p>runtime dependencies. You keep your own Anthropic, OpenAI, Gemini or LiteLLM client</p></div>
+      <div class="stat"><b>0</b><p>runtime dependencies. You keep your own Anthropic, OpenAI, Azure, Gemini or LiteLLM client</p></div>
     </div>
   </div>
 
@@ -308,12 +313,12 @@ kw = p.<span class="f">anthropic</span>(<span class="s">"claude-haiku-5-5"</span
       <div class="head">
         <span class="kicker">// benchmarks, real API calls</span>
         <h2>Measured, including where it matters less</h2>
-        <p>Same content in three layouts: a typical app, a clean prompt with the provider's own automatic caching, and cachemaxxing.</p>
+        <p>Same content in three layouts: an app with common prompt bugs, a clean prompt with the provider's own automatic caching, and cachemaxxing.</p>
       </div>
       <div class="bench">
         <img src="assets/benchmark.svg" alt="Cached input tokens per conversation for naive, clean with provider auto-caching, and cachemaxxing, on Anthropic, OpenAI and Gemini, for chat and RAG" loading="lazy" width="760" height="622">
         <ul class="points">
-          <li><b>Against a typical app: 76–88% cheaper</b><p>Input cost for chat and RAG, on every model. The usual culprits are a timestamp in the system prompt, shuffled tools and re-rendered history.</p></li>
+          <li><b>Against an app with those bugs: 76–88% cheaper</b><p>Input cost for chat and RAG, on every model. The usual culprits are a timestamp in the system prompt, shuffled tools and re-rendered history.</p></li>
           <li><b>Anthropic: 82–89% cheaper than automatic caching</b><p>Automatic caching puts its one cache entry after the per-turn context, so every call pays the write premium and reads nothing back.</p></li>
           <li><b>Gemini: 62–67% cheaper</b><p>Implicit caching is best-effort. An explicit cache, created only when it pays, read 88–97% of the input.</p></li>
           <li><b>OpenAI: 6–19% cheaper</b><p>OpenAI's implicit caching already finds a stable prefix. The win there is fixing the habits, plus the measurements.</p></li>
@@ -333,12 +338,12 @@ kw = p.<span class="f">anthropic</span>(<span class="s">"claude-haiku-5-5"</span
       <div class="works">
         <a class="work" href="quickstart/"><strong>Anthropic</strong><code>p.anthropic(model)</code></a>
         <a class="work" href="quickstart/"><strong>OpenAI</strong><code>p.openai(model) · p.openai_chat(model)</code></a>
+        <a class="work" href="azure/"><strong>Azure OpenAI</strong><code>p.openai_chat(deployment)</code></a>
         <a class="work" href="quickstart/"><strong>Gemini</strong><code>p.gemini(model) · gemini_cache()</code></a>
         <a class="work" href="quickstart/"><strong>LiteLLM</strong><code>p.litellm("anthropic/...")</code></a>
         <a class="work" href="langchain/"><strong>LangChain and LangGraph</strong><code>CachedModel(llm) · CacheMiddleware()</code></a>
         <a class="work" href="monitoring/"><strong>Langfuse, LangSmith, OpenTelemetry</strong><code>usage(resp).attributes()</code></a>
         <a class="work" href="diagnosing/#gate-it-in-ci"><strong>GitHub Actions</strong><code>uses: ashhadahsan/cachemaxxing</code></a>
-        <a class="work" href="caching/"><strong>Explicit-cache economics</strong><code>should_cache(tokens, reuses, ...)</code></a>
       </div>
     </div>
   </section>

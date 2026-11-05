@@ -15,7 +15,7 @@ from langchain.agents.middleware import ModelRequest, ModelResponse  # noqa: E40
 from langchain_anthropic import ChatAnthropic  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage  # noqa: E402
 from langchain_google_genai import ChatGoogleGenerativeAI  # noqa: E402
-from langchain_openai import ChatOpenAI  # noqa: E402
+from langchain_openai import AzureChatOpenAI, ChatOpenAI  # noqa: E402
 
 import cachemaxxing.langchain as lc  # noqa: E402
 from cachemaxxing.langchain import CacheMiddleware, cache_fields  # noqa: E402
@@ -34,12 +34,12 @@ def request(model: Any, system: Any = "You are helpful.", settings: dict[str, An
     )
 
 
-def reply(provider: str, model: str) -> AIMessage:
+def reply(provider: str, model: str, cache_read: int = 1500) -> AIMessage:
     usage = {
         "input_tokens": 2000,
         "output_tokens": 5,
         "total_tokens": 2005,
-        "input_token_details": {"cache_read": 1500},
+        "input_token_details": {"cache_read": cache_read},
     }
     return AIMessage("ok", usage_metadata=usage, response_metadata={"model_provider": provider, "model_name": model})
 
@@ -234,6 +234,32 @@ def test_middleware_diagnoses_a_changing_system_prompt(caplog: pytest.LogCapture
     model = ChatOpenAI(model="gpt-6-luna", api_key="t")
     with caplog.at_level("WARNING", logger="cachemaxxing"):
         for i in range(3):
-            run(mw, request(model, f"Now: 2026-10-31T10:0{i}:00Z. You are helpful."), reply("openai", "gpt-6-luna"))
+            run(mw, request(model, f"Now: 2026-10-31T10:0{i}:00Z. You are helpful."), reply("openai", "gpt-6-luna", 0))
     assert mw.stats.drift["agent"] == {"system[].text (timestamp)": 2}
     assert "fix: A time changes on every call" in caplog.text
+
+
+def azure(deployment: str) -> Any:
+    return AzureChatOpenAI(
+        azure_endpoint="https://x.openai.azure.com",
+        api_key="t",
+        api_version="2025-04-01-preview",
+        azure_deployment=deployment,
+    )
+
+
+def test_azure_gets_cache_fields_when_the_model_is_known_to_take_them() -> None:
+    sent = run(CacheMiddleware("agent"), request(azure("gpt-6-luna")), reply("azure_openai", "gpt-6-luna"))
+    assert sent.system_message.content == [{"type": "text", "text": "You are helpful.", "prompt_cache_breakpoint": BP}]
+    assert sent.model_settings["prompt_cache_options"] == {"mode": "implicit", "ttl": "30m"}
+
+
+def test_azure_custom_deployment_names_are_left_alone_unless_told() -> None:
+    req = request(azure("prod-chat"))  # could be a model that rejects these fields: a 400 would fail the call
+    assert run(CacheMiddleware("agent"), req, reply("azure_openai", "gpt-6-luna")) is req
+    sent = run(
+        CacheMiddleware("agent", explicit=True), request(azure("prod-chat")), reply("azure_openai", "gpt-6-luna")
+    )
+    assert sent.model_settings["prompt_cache_options"] == {"mode": "implicit", "ttl": "30m"}
+    ptu = request(azure("gpt-6-luna"))
+    assert run(CacheMiddleware("agent", explicit=False), ptu, reply("azure_openai", "gpt-6-luna")) is ptu

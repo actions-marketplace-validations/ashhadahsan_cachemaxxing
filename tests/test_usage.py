@@ -420,3 +420,86 @@ def test_stats_compares_with_what_was_sent_not_a_later_mutation() -> None:
     s.add("s", missed(), request=req)
     req["system"][0]["text"] = ts_request(1)["system"][0]["text"]  # the caller reuses and edits its dict
     assert s.add("s", missed(), request=req) is not None
+
+
+def turn(user: str, n: int, system: str = "S") -> dict[str, Any]:
+    """Request n of a user's conversation, on a shared system message."""
+    chat = []
+    for i in range(n):
+        chat += [{"role": "user", "content": f"{user} q{i}"}, {"role": "assistant", "content": f"{user} a{i}"}]
+    return {
+        "model": "gpt-6-luna",
+        "messages": [{"role": "system", "content": system}, *chat, {"role": "user", "content": f"{user} q{n}"}],
+    }
+
+
+def read(cache_read: int, total: int = 1000) -> Usage:
+    return Usage("openai", "gpt-6-luna", input=total, cache_read=cache_read)
+
+
+def test_users_taking_turns_on_a_good_layout_is_not_a_miss(caplog: pytest.LogCaptureFixture) -> None:
+    s = Stats()
+    with caplog.at_level("WARNING", logger="cachemaxxing"):
+        for user, n, cached in [("ana", 0, 0), ("ben", 0, 990), ("ana", 1, 980), ("ben", 1, 990), ("ana", 2, 980)]:
+            assert s.add("s", read(cached), request=turn(user, n)) is None
+    assert s.drift == {} and not caplog.records
+
+
+def test_a_time_atop_the_prompt_is_found_even_with_users_taking_turns(caplog: pytest.LogCaptureFixture) -> None:
+    s = Stats()
+    with caplog.at_level("WARNING", logger="cachemaxxing"):
+        for i, (user, n) in enumerate([("ana", 0), ("ben", 0), ("ana", 1)]):
+            d = s.add("s", read(0), request=turn(user, n, system=f"Now: 2026-11-05T10:0{i}:00Z. Be kind."))
+    assert d is not None and d.hint == "timestamp"
+    assert s.drift["s"] == {"messages[].content[].text (timestamp)": 2} and len(caplog.records) == 1
+    assert "the cached prefix broke" in caplog.text
+
+
+def test_a_change_deep_in_the_prompt_is_not_blamed_on_an_expired_cache() -> None:
+    s = Stats(warn=False)
+    stable = "policy " * 2000  # long enough to cache, but the marker comes after the change: nothing can be read
+    for i in range(2):
+        d = s.add("s", read(0), request=turn("ana", 0, system=f"{stable}Now: 2026-11-05T10:0{i}:00Z"))
+    assert d is not None and d.hint == "timestamp" and NO_READ not in s.drift["s"]
+
+
+def test_another_conversation_on_a_cold_cache_is_no_read_not_a_broken_prefix() -> None:
+    s = Stats(warn=False)
+    s.add("s", read(0), request=turn("ana", 2))
+    assert s.add("s", read(0), request=turn("ben", 2)) is None
+    assert s.drift["s"] == {NO_READ: 1}
+
+
+def test_a_miss_inside_a_conversation_says_so_without_claiming_a_broken_prefix(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    s = Stats()
+    s.add("s", read(0), request=turn("ana", 2))
+    with caplog.at_level("WARNING", logger="cachemaxxing"):
+        d = s.add("s", read(300), request=turn("ben", 2))  # the shared prefix was read, the rest wasn't
+    assert d is not None and d.hint == "conversation"
+    assert s.drift["s"] == {"messages[].content[].text (conversation)": 1}
+    assert "only 30% of the input came from cache" in caplog.text and "broke" not in caplog.text
+    assert "users take turns" in d.fix
+
+
+def test_azure_chat_response_and_a_custom_deployment_name() -> None:
+    r = {
+        "object": "chat.completion",
+        "model": "gpt-6-luna-2026-09-22",  # recorded from a live Azure call
+        "usage": {
+            "prompt_tokens": 6306,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {"audio_tokens": 0, "cached_tokens": 6291, "cache_write_tokens": 12},
+        },
+    }
+    u = usage(r)
+    assert (u.provider, u.input, u.cache_read, u.cache_write) == ("openai", 6306, 6291, 12) and u.est_cost is not None
+    named = {"object": "response", "model": "prod-chat", "usage": {"input_tokens": 100, "output_tokens": 1}}
+    assert usage(named).est_cost is None
+    assert usage(named, model="gpt-6-luna").est_cost == pytest.approx((100 * 0.10 + 1 * 0.50) / 1e6)
+
+
+def test_openai_long_context_prices_the_whole_request() -> None:
+    r = {"object": "response", "model": "gpt-6-luna", "usage": {"input_tokens": 300_000, "output_tokens": 0}}
+    assert usage(r).est_cost == pytest.approx(300_000 * 0.20 / 1e6)
